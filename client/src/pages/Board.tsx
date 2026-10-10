@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowLeft, ArrowRight, Check, ChevronDown, Circle, Copy, Download, Eraser, Grid2X2, Hand, Link2, LoaderCircle, LockKeyhole, Minus, MousePointer2, Pencil, Plus, RectangleHorizontal, Redo2, RotateCcw, Share2, StickyNote, Type, Users, X } from 'lucide-react';
 import { Canvas, Rect, Ellipse, Line, IText, PencilBrush, FabricObject, Group, Triangle, util } from 'fabric';
-import { socket, serverUrl } from '../lib/socket';
+import { socket } from '../lib/socket';
 import type { Participant, RoomPayload, ShapeOperation, Tool } from '../types';
 
 type Props = { code: string; name: string; onLeave: () => void; onNameChange: (name: string) => void };
@@ -11,7 +11,7 @@ const uid = () => crypto.randomUUID();
 (FabricObject as typeof FabricObject & { customProperties: string[] }).customProperties = ['syncId', 'syncVersion'];
 const safeObject = (obj: FabricObject) => obj.toObject(['syncId', 'syncVersion']) as Record<string, unknown>;
 
-export function Board({ code, name, onLeave, onNameChange }: Props) {
+export function Board({ code, name, onLeave }: Props) {
   const canvasEl = useRef<HTMLCanvasElement>(null);
   const containerEl = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<Canvas | null>(null);
@@ -45,7 +45,7 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
   const [nameOpen, setNameOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [historyTick, setHistoryTick] = useState(0);
+  const [, setHistoryTick] = useState(0);
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -67,11 +67,11 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
     const canvas = canvasRef.current; if (!canvas || readOnlyRef.current) return;
     (obj as FabricObject & { syncId?: string; syncVersion?: number }).syncId = uid();
     canvas.add(obj); canvas.setActiveObject(obj); canvas.requestRenderAll();
-  }, [readOnly]);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas || !containerEl.current) return;
-    const resize = () => { const rect = containerEl.current!.getBoundingClientRect(); canvas.setDimensions({ width: Math.max(300, rect.width), height: Math.max(300, rect.height) }); canvas.requestRenderAll(); };
+    const resize = () => { const rect = containerEl.current?.getBoundingClientRect(); if (!rect) return; canvas.setDimensions({ width: Math.max(300, rect.width), height: Math.max(300, rect.height) }); canvas.requestRenderAll(); };
     resize(); const observer = new ResizeObserver(resize); observer.observe(containerEl.current); return () => observer.disconnect();
   }, [loading]);
 
@@ -96,7 +96,7 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
         canvas.add(drawingShape); return;
       }
       if (active === 'text') { const text = new IText('Type something…', { left: pointer.x, top: pointer.y, fontSize: 22, fill: colorRef.current, fontFamily: 'Inter, Arial, sans-serif', editable: true }); addShape(text); setTool('select'); currentTool.current = 'select'; canvas.isDrawingMode = false; setTimeout(() => text.enterEditing(), 30); }
-      if (active === 'sticky') { const note = new Rect({ left: pointer.x, top: pointer.y, width: 180, height: 135, fill: '#fff2ad', stroke: '#f2d879', strokeWidth: 1,  }); const label = new IText('Double-click to edit', { left: pointer.x + 12, top: pointer.y + 12, width: 156, fontSize: 16, fill: '#4c4324', fontFamily: 'Inter, Arial, sans-serif' }); addShape(note); addShape(label); setTool('select'); currentTool.current = 'select'; }
+      if (active === 'sticky') { const note = new Rect({ left: pointer.x, top: pointer.y, width: 180, height: 135, fill: '#fff2ad', stroke: '#f2d879', strokeWidth: 1 }); const label = new IText('Double-click to edit', { left: pointer.x + 12, top: pointer.y + 12, width: 156, fontSize: 16, fill: '#4c4324', fontFamily: 'Inter, Arial, sans-serif' }); addShape(note); addShape(label); setTool('select'); currentTool.current = 'select'; }
     };
     const move = (opt: { e: Event }) => { const pointer = canvas.getPointer(opt.e as MouseEvent); if (currentTool.current === 'draw' && strokePoints.current.length) { strokePoints.current.push([pointer.x, pointer.y]); if (socket.connected && strokePoints.current.length % 4 === 0) socket.volatile.emit('stroke:points', { points: strokePoints.current }); }
       if (!origin || !drawingShape) return;
@@ -127,7 +127,7 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
     const onPresenceJoin = (p: Participant) => setParticipants(old => old.some(x => x.id === p.id) ? old : [...old, p]);
     const onPresenceLeave = (p: { socketId: string }) => { setParticipants(old => old.filter(x => x.id !== p.socketId)); setCursors(old => old.filter(x => x.id !== p.socketId)); setRemoteStrokes([]); };
     const onCursor = (p: Cursor) => setCursors(old => [...old.filter(x => x.id !== p.id), p]);
-    const onOperation = async (op: ShapeOperation) => { if (!op?.objectId || !op.kind) return; const version = versions.current.get(op.objectId) || 0; if (op.version <= version) return; versions.current.set(op.objectId, op.version); suppress.current = true; try { const existing = canvas.getObjects().find(o => (o as FabricObject & { syncId?: string }).syncId === op.objectId); if (op.kind === 'delete') { if (existing) canvas.remove(existing); } else if (op.payload) { const hydrated = await util.enlivenObjects([op.payload] as never[]); const obj = hydrated[0] as FabricObject & { syncId?: string; syncVersion?: number }; obj.syncId = op.objectId; obj.syncVersion = op.version; if (existing) canvas.remove(existing); canvas.add(obj); } canvas.requestRenderAll(); } catch (e) { console.error('Could not apply remote operation', e); } finally { suppress.current = false; } };
+    const onOperation = async (op: ShapeOperation) => { if (!op?.objectId || !op.kind) return; const version = versions.current.get(op.objectId) || 0; if (op.version <= version) return; versions.current.set(op.objectId, op.version); suppress.current = true; try { const existing = canvas.getObjects().find(o => (o as FabricObject & { syncId?: string }).syncId === op.objectId); if (op.kind === 'delete') { if (existing) canvas.remove(existing); } else if (op.payload) { const hydrated = await util.enlivenObjects([op.payload] as never[]); const obj = hydrated[0] as FabricObject & { syncId?: string; syncVersion?: number }; if (obj) { obj.syncId = op.objectId; obj.syncVersion = op.version; if (existing) canvas.remove(existing); canvas.add(obj); } } canvas.requestRenderAll(); } catch (e) { console.error('Could not apply remote operation', e); } finally { suppress.current = false; } };
     const onSettings = (settings: { background: string; grid: boolean }) => { setBackground(settings.background); setGrid(settings.grid); canvas.backgroundColor = settings.background; canvas.requestRenderAll(); };
     const onStrokeStart = (p: { strokeId: string; x: number; y: number; color: string; userId: string }) => setRemoteStrokes(old => [...old.filter(s => s.id !== p.strokeId), { id: p.strokeId, color: p.color, points: [[p.x, p.y]] }]);
     const onStrokePoints = (p: { strokeId: string; points: number[][] }) => setRemoteStrokes(old => old.map(s => s.id === p.strokeId ? { ...s, points: p.points.slice(-2000) } : s));
@@ -135,7 +135,6 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
     socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('connect_error', onConnectError); socket.on('presence:join', onPresenceJoin); socket.on('presence:leave', onPresenceLeave); socket.on('cursor:move', onCursor); socket.on('shape:operation', onOperation); socket.on('board:settings', onSettings); socket.on('stroke:start', onStrokeStart); socket.on('stroke:points', onStrokePoints); socket.on('stroke:end', onStrokeEnd);
     if (!socket.connected) socket.connect(); else joinRoom();
     return () => { socket.off('connect', onConnect); socket.off('disconnect', onDisconnect); socket.off('connect_error', onConnectError); socket.off('presence:join', onPresenceJoin); socket.off('presence:leave', onPresenceLeave); socket.off('cursor:move', onCursor); socket.off('shape:operation', onOperation); socket.off('board:settings', onSettings); socket.off('stroke:start', onStrokeStart); socket.off('stroke:points', onStrokePoints); socket.off('stroke:end', onStrokeEnd); socket.emit('room:leave', { code }); canvas.getElement().removeEventListener('mousemove', cursorMove); canvas.dispose(); canvasRef.current = null; };
-  // A board instance is scoped to one room; reconnect joins the same room again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
@@ -144,11 +143,23 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
   useEffect(() => { colorRef.current = stroke; fillRef.current = fill; widthRef.current = strokeWidth; }, [stroke, fill, strokeWidth]);
   useEffect(() => { const c = canvasRef.current; if (!c) return; c.backgroundColor = background; c.requestRenderAll(); }, [background]);
   useEffect(() => { const c = canvasRef.current; if (!c) return; c.setZoom(zoom / 100); c.requestRenderAll(); }, [zoom]);
-  useEffect(() => { const c = canvasRef.current; if (!c || !grid) return; const overlay = containerEl.current; if (overlay) overlay.classList.add('grid-on'); return () => overlay?.classList.remove('grid-on'); }, [grid]);
+  useEffect(() => { const overlay = containerEl.current; if (!overlay || !grid) return; overlay.classList.add('grid-on'); return () => overlay?.classList.remove('grid-on'); }, [grid]);
 
   const chooseTool = (next: Tool) => { setTool(next); currentTool.current = next; };
   const deleteSelected = () => { const c = canvasRef.current; if (!c || readOnly) return; const active = c.getActiveObjects(); if (!active.length) return; c.discardActiveObject(); active.forEach(o => c.remove(o)); c.requestRenderAll(); };
-  const duplicate = () => { const c = canvasRef.current; const active = c.getActiveObject(); if (!c || !active || readOnly) return; void active.clone().then((copy: FabricObject) => { copy.set({ left: (active.left || 0) + 20, top: (active.top || 0) + 20 }); (copy as FabricObject & { syncId?: string }).syncId = uid(); c.add(copy); c.setActiveObject(copy); c.requestRenderAll(); }); };
+  const duplicate = () => { 
+    const c = canvasRef.current; 
+    if (!c || readOnly) return; 
+    const active = c.getActiveObject(); 
+    if (!active) return; 
+    void active.clone().then((copy: FabricObject) => { 
+      copy.set({ left: (active.left || 0) + 20, top: (active.top || 0) + 20 }); 
+      (copy as FabricObject & { syncId?: string }).syncId = uid(); 
+      c.add(copy); 
+      c.setActiveObject(copy); 
+      c.requestRenderAll(); 
+    }); 
+  };
   const clearBoard = () => { const c = canvasRef.current; if (!c || readOnly) return; c.getObjects().slice().forEach(o => c.remove(o)); c.requestRenderAll(); setConfirmClear(false); notify('Board cleared'); };
   const exportFile = (format: 'png' | 'svg') => { const c = canvasRef.current; if (!c) return; const link = document.createElement('a'); link.download = `syncboard-${code}.${format}`; link.href = format === 'png' ? c.toDataURL({ format: 'png', multiplier: 2 }) : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.toSVG())}`; link.click(); notify(`Exported ${format.toUpperCase()}`); };
   const fit = () => { setZoom(100); const c = canvasRef.current; if (!c) return; c.setViewportTransform([1, 0, 0, 1, 0, 0]); c.requestRenderAll(); };
@@ -162,7 +173,7 @@ export function Board({ code, name, onLeave, onNameChange }: Props) {
   const restore = async (json: string) => { const c = canvasRef.current; if (!c) return; suppress.current = true; try { await c.loadFromJSON(JSON.parse(json)); c.requestRenderAll(); } finally { suppress.current = false; } };
   const undo = () => { if (undoStack.current.length < 2) { notify('Nothing to undo yet'); return; } const c = canvasRef.current; if (!c) return; const current = JSON.stringify(c.toObject(['syncId', 'syncVersion'])); redoStack.current.push(current); undoStack.current.pop(); void restore(undoStack.current[undoStack.current.length - 1]!); setHistoryTick(x => x + 1); notify('Undo applied locally'); };
   const redo = () => { const next = redoStack.current.pop(); if (!next) { notify('Nothing to redo'); return; } undoStack.current.push(next); void restore(next); setHistoryTick(x => x + 1); notify('Redo applied locally'); };
-  useEffect(() => { const c = canvasRef.current; if (!c) return; const onChanged = () => snapshot(); c.on('object:modified', onChanged); c.on('object:added', onChanged); return () => { c.off('object:modified', onChanged); c.off('object:added', onChanged); }; }, [historyTick]);
+  useEffect(() => { const c = canvasRef.current; if (!c) return; const onChanged = () => snapshot(); c.on('object:modified', onChanged); c.on('object:added', onChanged); return () => { c.off('object:modified', onChanged); c.off('object:added', onChanged); }; }, []);
 
   return <div className="board-app">
     <header className="board-header"><button className="back-btn" aria-label="Leave board" onClick={onLeave}><ArrowLeft size={18}/></button><div className="board-brand"><span className="brand-mark small"><Layers3Icon/></span><div className="board-title-wrap"><button className="board-title" onClick={() => { setNameDraft(boardName); setNameOpen(true); }}>{boardName}<ChevronDown size={13}/></button><div className="board-meta"><span className={`status-dot ${status}`}/>{status === 'connected' ? 'All changes synced' : status === 'connecting' ? 'Connecting…' : status === 'reconnecting' ? 'Reconnecting…' : 'Offline'} <span className="meta-separator">·</span> {code}</div></div></div><div className="header-spacer"/><div className="header-participants" aria-label={`${participants.length + (self ? 1 : 0)} participants`}>{self && <span className="avatar self-avatar" style={{ background: self.color }} title={`${self.name} (you)`}>{self.name.slice(0, 1).toUpperCase()}</span>}{participants.slice(0, 3).map(p => <span className="avatar" key={p.id} style={{ background: p.color }} title={p.name}>{p.name.slice(0, 1).toUpperCase()}</span>)}<span className="participant-count"><Users size={13}/>{participants.length + (self ? 1 : 0)}</span></div><span className={`save-label ${saveStatus}`}>{saveStatus === 'saving' ? <LoaderCircle size={13} className="spin"/> : saveStatus === 'error' ? <X size={13}/> : <Check size={13}/>} {saveStatus === 'saving' ? 'Saving' : saveStatus === 'error' ? 'Not saved' : 'Saved'}</span><button className="share-btn" onClick={() => setShareOpen(true)}><Share2 size={15}/> <span>Share</span></button><button className="more-btn" aria-label="Export options" onClick={() => exportFile('png')}><Download size={17}/></button></header>
