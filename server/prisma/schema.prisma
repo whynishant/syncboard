@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Room {
+  id          String        @id @default(cuid())
+  code        String        @unique @db.VarChar(16)
+  name        String        @default("Untitled board") @db.VarChar(120)
+  readOnly    Boolean       @default(false)
+  snapshot    Json          @default("{}")
+  revision    Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  operations  BoardOperation[]
+}
+
+model BoardOperation {
+  id        String   @id
+  roomId    String
+  objectId  String
+  kind      String   @db.VarChar(16)
+  version   Int
+  payload   Json?
+  createdAt DateTime @default(now())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  @@index([roomId, createdAt])
+  @@unique([roomId, id])
+}

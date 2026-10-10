@@ -1,0 +1,15 @@
+{
+  "name": "syncboard",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "npm --workspace client run dev",
+    "dev:server": "npm --workspace server run dev",
+    "build": "npm --workspace server run build && npm --workspace client run build",
+    "test": "npm --workspace server test && npm --workspace client test",
+    "test:e2e": "npm --workspace client run test:e2e"
+  },
+  "devDependencies": { "concurrently": "^9.1.2" }
+}
