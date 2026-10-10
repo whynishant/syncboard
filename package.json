@@ -2,6 +2,7 @@
   "name": "syncboard",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "workspaces": ["client", "server"],
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
